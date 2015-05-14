@@ -1,0 +1,31 @@
+package com.maxeler.packetfilter;
+
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
+
+public class LayerParser extends KernelLib {
+
+	private final DFEVar payload;
+	private final DFEVar payloadValid;
+	private final DFEVar payloadStart;
+
+	public LayerParser(KernelLib owner, DFEVar isStart, DFEVar valid, DFEVar data, int payloadByteOffset) {
+		super(owner);
+
+		payload = FieldUtils.realign(data, payloadByteOffset);
+		payloadValid = valid & FieldUtils.isAtOrBeyondOffset(isStart, data.getType().getTotalBits() / 8,  payloadByteOffset);
+		payloadStart = valid & FieldUtils.isAtOffset(isStart, data.getType().getTotalBits() / 8, payloadByteOffset);
+	}
+
+	public DFEVar getPayload() {
+		return payload;
+	}
+
+	public DFEVar getPayloadValid() {
+		return payloadValid;
+	}
+
+	public DFEVar getPayloadStart() {
+		return payloadStart;
+	}
+}

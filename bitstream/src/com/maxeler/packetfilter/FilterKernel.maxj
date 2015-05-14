@@ -3,95 +3,33 @@ package com.maxeler.packetfilter;
 import com.maxeler.maxcompiler.v2.kernelcompiler.Kernel;
 import com.maxeler.maxcompiler.v2.kernelcompiler.KernelParameters;
 import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.IO.NonBlockingInput;
-import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
 import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEStruct;
 import com.maxeler.networking.v1.framed_kernels.FramedLinkType;
-import com.maxeler.packetfilter.FieldUtils.FieldDesc;
 
 public class FilterKernel extends Kernel {
 	public static final String INPUT = "frameIn";
 	public static final String OUTPUT = "frameOut";
-	private final DFEVar valid;
 
 
 
-	FilterKernel(KernelParameters parameters, FramedLinkType rxLinkType) {
+	FilterKernel(KernelParameters parameters, FramedLinkType rxLinkType, int numLinks) {
 		super(parameters);
 
 		flush.disabled();
 
-		NonBlockingInput<DFEStruct> input = io.nonBlockingInput(INPUT,
-				rxLinkType.getDFEStructType(),
-				rxLinkType.getDFEStructType().getPositionForField(rxLinkType.getEOF()));
+		for (int i=0; i < numLinks; i++) {
+			NonBlockingInput<DFEStruct> input = io.nonBlockingInput(INPUT + i,
+					rxLinkType.getDFEStructType(),
+					rxLinkType.getDFEStructType().getPositionForField(rxLinkType.getEOF()));
+
+			LinkFilter f = new LinkFilter(this, input, rxLinkType);
+		}
 
 
 
-		/*
-		 * Echo back only UDP frames
-		 */
-
-		valid = input.valid;
-		DFEVar wordData = input.data[rxLinkType.getData()];
-		DFEVar isStart = input.valid & (DFEVar)input.data[rxLinkType.getSOF()];
-
-//		debug.simPrintf(valid, "Got frame data 0x%x\n", wordData);
-
-		FieldUtils fieldUtils = new FieldUtils(this, wordData.getType().getTotalBits());
 
 
-		FieldDesc ETHERTYPE = new FieldDesc(dfeUInt(16), 12);
-		FieldDesc IPPROTO = new FieldDesc(dfeUInt(8), 14+9);
-
-		FieldDesc SRC_IP = new FieldDesc(dfeUInt(32), 26);
-		FieldDesc DST_IP = new FieldDesc(dfeUInt(32), 30);
-
-
-		DFEVar etherType = fieldUtils.captureField(isStart, wordData, ETHERTYPE);
-		DFEVar ipProtocol = fieldUtils.captureField(isStart, wordData, IPPROTO);
-
-		DFEVar isIp = fieldUtils.byteReverse(etherType) === 0x0800; // ETHERTYPE_IP
-		DFEVar isTcp = fieldUtils.byteReverse(ipProtocol) === 6; // TCP = 6
-
-		debug.simPrintf(isStart & isIp, "This is an IP packet\n");
-		debug.simPrintf(isStart & isTcp, "This is a TCP packet\n");
-
-		DFEVar srcIp = fieldUtils.captureField(isStart, wordData, SRC_IP);
-		DFEVar dstIp = fieldUtils.captureField(isStart, wordData, DST_IP);
-
-
-
-		TcpParser tcpParser = new TcpParser(this, fieldUtils, isStart, valid, wordData);
-
-		DFEVar seqNum = tcpParser.getSeqNum();
-		DFEVar isSeqValid = tcpParser.isSeqNumFound() & isIp & isTcp;
-
-		debug.simPrintf(isSeqValid, "Found SeqNum = %x\n", seqNum);
 
 //		io.output(OUTPUT, ) <== outputStruct;
 	}
-
-	private DFEVar to32(DFEVar v) {
-		int w = v.getType().getTotalBits();
-		if (w < 32) {
-			v = constant.var(dfeUInt(32-w), 0) # v;
-		}
-
-		return v.cast(dfeUInt(32));
-	}
-
-	private DFEVar wrap16(DFEVar v) {
-		return sum16(sum16(v)).slice(0, 16).cast(dfeUInt(16));
-	}
-
-	private DFEVar sum16(DFEVar field) {
-		DFEVar sum = constant.var(dfeUInt(32), 0);
-
-		for (int i=0; i < (field.getType().getTotalBits() / 16); i++) {
-			sum += to32(field.slice(i * 16, 16));
-		}
-
-
-		return sum;
-	}
-
 }

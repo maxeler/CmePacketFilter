@@ -1,0 +1,32 @@
+package com.maxeler.packetfilter;
+
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
+import com.maxeler.packetfilter.FieldUtils.FieldDesc;
+
+public class EthernetParser extends LayerParser {
+
+	private final DFEVar etherType;
+	private final DFEVar isIp;
+	private static final int payloadByteOffset = 14;
+
+	public EthernetParser(KernelLib owner, DFEVar isStart, DFEVar valid, DFEVar data) {
+		super(owner, isStart, valid, data, payloadByteOffset);
+
+		FieldDesc ETHERTYPE = new FieldDesc(dfeUInt(16), 12);
+		etherType = FieldUtils.byteReverse(FieldUtils.captureField(isStart, data, ETHERTYPE));
+
+
+		isIp = etherType === 0x0800; // ETHERTYPE_IP
+
+		debug.simPrintf(isStart, "etherType = 0x%x\n", etherType);
+	}
+
+	public DFEVar isIpEtherType() {
+		return isIp;
+	}
+
+	public DFEVar getEtherType() {
+		return etherType;
+	}
+}

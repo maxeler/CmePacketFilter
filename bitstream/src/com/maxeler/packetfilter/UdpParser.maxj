@@ -1,0 +1,38 @@
+package com.maxeler.packetfilter;
+
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
+import com.maxeler.packetfilter.FieldUtils.FieldDesc;
+
+public class UdpParser extends LayerParser {
+	private final DFEVar srcPort;
+	private final DFEVar dstPort;
+	private final DFEVar payload;
+	private static final int payloadByteOffset = 8;
+
+	protected UdpParser(KernelLib owner, DFEVar isStart, DFEVar valid, DFEVar data) {
+		super(owner, isStart, valid, data, payloadByteOffset);
+
+		FieldDesc SRC_UDP_PORT = new FieldDesc(dfeUInt(16), 0);
+		FieldDesc DST_UDP_PORT = new FieldDesc(dfeUInt(16), 2);
+
+		srcPort = FieldUtils.captureField(isStart, data, SRC_UDP_PORT);
+		dstPort = FieldUtils.captureField(isStart, data, DST_UDP_PORT);
+
+
+		payload = FieldUtils.realign(data, payloadByteOffset);
+	}
+
+	public DFEVar getSrcPort() {
+		return srcPort;
+	}
+
+	public DFEVar getDstPort() {
+		return dstPort;
+	}
+
+	@Override
+	public DFEVar getPayload() {
+		return payload;
+	}
+}

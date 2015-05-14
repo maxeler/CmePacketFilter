@@ -1,0 +1,28 @@
+package com.maxeler.packetfilter;
+
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFETypeFactory;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEStructType;
+
+public class Types {
+
+	public static final PacketMetadata packetMetadata = new PacketMetadata();
+	public static class PacketMetadata extends DFEStructType {
+		public static final String IsMarketData = "isMarketData";
+		public static final String FlowId = "FlowId";
+		public static final String SequenceNumber = "SequenceNumber";
+		public static final String PortId = "PortId";
+		public static final String DfeTimestamp = "DfeTimestamp";
+		public static final String AristaTimestamp = "AristaTimestamp";
+
+		public PacketMetadata() {
+			super(
+					sft(IsMarketData, DFETypeFactory.dfeBool()),
+					sft(FlowId, DFETypeFactory.dfeUInt(32)),
+					sft(PortId, DFETypeFactory.dfeUInt(8)),
+					sft(SequenceNumber, DFETypeFactory.dfeUInt(32)),
+					sft(DfeTimestamp, DFETypeFactory.dfeUInt(64)),
+					sft(AristaTimestamp, DFETypeFactory.dfeUInt(64))
+			);
+		}
+	}
+}

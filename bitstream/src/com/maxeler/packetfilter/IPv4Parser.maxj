@@ -1,0 +1,56 @@
+package com.maxeler.packetfilter;
+
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
+import com.maxeler.packetfilter.FieldUtils.FieldDesc;
+
+public class IPv4Parser extends LayerParser {
+
+	private final DFEVar ipProtocol;
+	private final DFEVar isTcp;
+	private final DFEVar isUdp;
+	private final DFEVar srcIp;
+	private final DFEVar dstIp;
+	private final DFEVar ipHeaderLength;
+
+	private static final int payloadByteOffset = 20;
+
+	public IPv4Parser(KernelLib owner, DFEVar isStart, DFEVar valid, DFEVar data) {
+		super(owner, isStart, valid, data, payloadByteOffset);
+
+		FieldDesc IPPROTO = new FieldDesc(dfeUInt(8), 9);
+		FieldDesc SRC_IP = new FieldDesc(dfeUInt(32), 12);
+		FieldDesc DST_IP = new FieldDesc(dfeUInt(32), 16);
+
+		FieldDesc IP_HEADER_LENGTH = new FieldDesc(dfeUInt(8), 0);
+
+		ipHeaderLength = FieldUtils.captureField(isStart, data, IP_HEADER_LENGTH).slice(4, 4);
+
+		ipProtocol = FieldUtils.byteReverse(FieldUtils.captureField(isStart, data, IPPROTO));
+
+		debug.simPrintf(valid, "IP Frame: %x, start = %d\n", data, isStart);
+
+		isTcp = ipProtocol === 6; // TCP = 6
+		isUdp = ipProtocol === 17; // UDP = 17
+
+		debug.simPrintf(isStart, "ipProtocol = %d\n", ipProtocol);
+
+		debug.simPrintf(isStart & isTcp, "This is a TCP packet\n");
+		debug.simPrintf(isStart & isUdp, "This is a UDP packet\n");
+
+		srcIp = FieldUtils.captureField(isStart, data, SRC_IP);
+		dstIp = FieldUtils.captureField(isStart, data, DST_IP);
+	}
+
+	public DFEVar getIpProtocol() {
+		return ipProtocol;
+	}
+
+	public DFEVar isTcp() {
+		return isTcp;
+	}
+
+	public DFEVar isUdp() {
+		return isUdp;
+	}
+}

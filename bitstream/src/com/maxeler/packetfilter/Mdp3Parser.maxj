@@ -1,0 +1,37 @@
+package com.maxeler.packetfilter;
+
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.Reductions;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEStruct;
+
+public class Mdp3Parser extends KernelLib {
+
+
+	private final DFEVar gotSeq;
+	private final DFEVar theSeqNum;
+
+	protected Mdp3Parser(KernelLib owner, DFEVar isStart, DFEVar valid, DFEVar data) {
+		super(owner);
+
+
+
+		DFEVar msgSeqNum = data.slice(0, 32);
+
+
+		gotSeq = isStart;
+		theSeqNum = Reductions.streamHold(msgSeqNum, gotSeq);
+
+
+		DFEStruct metadata = Types.packetMetadata.newInstance(this);
+//		metadata[Types.PacketMetadata.]
+	}
+
+	public DFEVar isSeqNumFound() {
+		return gotSeq;
+	}
+
+	public DFEVar getSeqNum() {
+		return theSeqNum;
+	}
+}

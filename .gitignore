@@ -1,0 +1,4 @@
+bitstream/bin
+*.pcap
+*.pyc
+

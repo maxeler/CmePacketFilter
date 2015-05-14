@@ -4,6 +4,7 @@ import os
 import sys
 import getpass
 import subprocess
+from datetime import date
 
 from fabricate import *
 
@@ -47,6 +48,12 @@ def build():
     compile()
     link()
 
+def rebuild():
+	maxfile()
+	compile()
+	link()
+
+
 def compile():
 	sliccompile()
 	for source in sources:
@@ -61,6 +68,8 @@ def maxfile():
 	print "Buidling maxfile..."
 	os.environ["CLASSPATH"]="../bitstream/bin/:" + os.environ["CLASSPATH"] + ":" + os.environ["MAXPOWERDIR"] + "/bin/:"; 
 	subprocess.call(['maxJavaRun' , 'com/maxeler/packetfilter/FilterManager'])
+	now = date.today().strftime("%d-%m-%y")
+	run('cp', '-f', '-v', '/scratch/itay/maxdc_builds/%s/PacketFilter_ISCA_DFE_SIM/results/PacketFilter.max' % (now), 'PacketFilter.max')
 
 def clean():
     autoclean()
@@ -72,8 +81,16 @@ def getSimName():
 def maxcompilersim():
 	return '%s/bin/maxcompilersim' % MAXCOMPILERDIR
 
+def run_sim():
+	build()
+	start_sim()
+	subprocess.call(['./%s' % (target)])
+
 def start_sim():
-	subprocess.call([maxcompilersim(), '-n', getSimName(), '-c', 'ISCA', '-e', 'QSFP_TOP_10G_PORT1:172.20.50.10:255.255.255.0', '-p', 'QSFP_TOP_10G_PORT1:top1.pcap', 'restart'])
+	subprocess.call([maxcompilersim(), '-n', getSimName(), '-c', 'ISCA', 
+		'-e', 'QSFP_TOP_10G_PORT1:172.20.50.10:255.255.255.0', 
+		'-e', 'QSFP_BOT_10G_PORT1:172.30.50.10:255.255.255.0',
+		'-p', 'QSFP_TOP_10G_PORT1:top1.pcap', 'restart'])
 
 def stop_sim():
 	subprocess.call([maxcompilersim(), '-n', getSimName(), 'stop'])

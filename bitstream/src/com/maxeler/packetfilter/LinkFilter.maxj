@@ -1,0 +1,44 @@
+package com.maxeler.packetfilter;
+
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.IO.NonBlockingInput;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEStruct;
+import com.maxeler.networking.v1.framed_kernels.FramedLinkType;
+
+public class LinkFilter extends KernelLib {
+
+	private final DFEVar valid;
+
+	public LinkFilter(KernelLib owner, NonBlockingInput<DFEStruct> input, FramedLinkType rxLinkType) {
+		super(owner);
+		/*
+		 * Echo back only UDP frames
+		 */
+
+		valid = input.valid;
+		DFEVar wordData = input.data[rxLinkType.getData()];
+		DFEVar isStart = input.valid & (DFEVar)input.data[rxLinkType.getSOF()];
+
+//		debug.simPrintf(valid, "Got frame data 0x%x\n", wordData);
+
+		EthernetParser ep = new EthernetParser(this, isStart, valid, wordData);
+		IPv4Parser ip = new IPv4Parser(this, ep.getPayloadStart(), ep.getPayloadValid() & ep.isIpEtherType(), ep.getPayload());
+		UdpParser up = new UdpParser(this, ip.getPayloadStart(), ip.getPayloadValid(), ip.getPayload());
+		TcpParser tp = new TcpParser(this, ip.getPayloadStart(), ip.getPayloadValid(), ip.getPayload());
+
+
+		FixParser fixParser = new FixParser(this, tp.getPayloadStart(), tp.getPayloadValid(), tp.getPayload());
+		Mdp3Parser mdp3Parser = new Mdp3Parser(this, up.getPayloadStart(), up.getPayloadValid(), up.getPayload());
+
+		DFEVar mdp3SeqNum = mdp3Parser.getSeqNum();
+		DFEVar mdp3SeqValid = mdp3Parser.isSeqNumFound() & ep.isIpEtherType() & ip.isUdp();
+
+		DFEVar fixSeqNum = fixParser.getSeqNum();
+		DFEVar fixSeqValid = fixParser.isSeqNumFound() & ep.isIpEtherType() & ip.isTcp();
+
+		debug.simPrintf(fixSeqValid, "Found FIX SeqNum = %x\n", fixSeqNum);
+		debug.simPrintf(mdp3SeqValid, "Found MDP3 SeqNum = %x\n", mdp3SeqNum);
+	}
+
+}
