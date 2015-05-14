@@ -28,15 +28,15 @@ public class IPv4Parser extends LayerParser {
 
 		ipProtocol = FieldUtils.byteReverse(FieldUtils.captureField(isStart, data, IPPROTO));
 
-		debug.simPrintf(valid, "IP Frame: %x, start = %d\n", data, isStart);
+//		debug.simPrintf(valid, "IP Frame: %x, start = %d\n", data, isStart);
 
 		isTcp = ipProtocol === 6; // TCP = 6
 		isUdp = ipProtocol === 17; // UDP = 17
 
-		debug.simPrintf(isStart, "ipProtocol = %d\n", ipProtocol);
+//		debug.simPrintf(isStart, "ipProtocol = %d\n", ipProtocol);
 
-		debug.simPrintf(isStart & isTcp, "This is a TCP packet\n");
-		debug.simPrintf(isStart & isUdp, "This is a UDP packet\n");
+//		debug.simPrintf(isStart & isTcp, "This is a TCP packet\n");
+//		debug.simPrintf(isStart & isUdp, "This is a UDP packet\n");
 
 		srcIp = FieldUtils.captureField(isStart, data, SRC_IP);
 		dstIp = FieldUtils.captureField(isStart, data, DST_IP);

@@ -16,13 +16,27 @@ public class Types {
 
 		public PacketMetadata() {
 			super(
-					sft(IsMarketData, DFETypeFactory.dfeBool()),
-					sft(FlowId, DFETypeFactory.dfeUInt(32)),
-					sft(PortId, DFETypeFactory.dfeUInt(8)),
-					sft(SequenceNumber, DFETypeFactory.dfeUInt(32)),
 					sft(DfeTimestamp, DFETypeFactory.dfeUInt(64)),
-					sft(AristaTimestamp, DFETypeFactory.dfeUInt(64))
+					sft(AristaTimestamp, DFETypeFactory.dfeUInt(32)),
+					sft(FlowId, DFETypeFactory.dfeRawBits(32)),
+					sft(SequenceNumber, DFETypeFactory.dfeUInt(32)),
+					sft(PortId, DFETypeFactory.dfeUInt(8)),
+					sft(IsMarketData, DFETypeFactory.dfeBool())
 			);
+		}
+	}
+
+	public static final TimestampStructType timestampStructType = new TimestampStructType();
+	public static class TimestampStructType extends DFEStructType {
+		public static final String TIMESTAMP = "timestamp";
+		public static final String DOUBT = "doubt";
+		public static final String VALID = "valid";
+		public TimestampStructType() {
+			super(
+					sft(TIMESTAMP, DFETypeFactory.dfeUInt(64)),
+					sft(DOUBT, DFETypeFactory.dfeBool()),
+					sft(VALID, DFETypeFactory.dfeBool())
+					);
 		}
 	}
 }

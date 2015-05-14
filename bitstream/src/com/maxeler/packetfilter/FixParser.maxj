@@ -65,8 +65,8 @@ public class FixParser extends KernelLib {
 		gotSeq = valid & hasSeqNum & ~(stream.offset(hasSeqNum, -2) | stream.offset(hasSeqNum, -1));
 
 
-
-		theSeqNum = Reductions.streamHold(control.oneHotMux(seqNumSelect, possibleSeqNums), gotSeq);
+		//FIXME: HACK! The 32 bit slice shouldn't be there. The string should be converted to a binary number!
+		theSeqNum = Reductions.streamHold(control.oneHotMux(seqNumSelect, possibleSeqNums), gotSeq).slice(0, 32).cast(dfeUInt(32));
 	}
 
 	public void dumpWord(DFEVar now, DFEVar superWord) {

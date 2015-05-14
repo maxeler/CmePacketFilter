@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.maxeler.maxcompiler.v2.build.EngineParameters;
 import com.maxeler.maxcompiler.v2.managers.BuildConfig;
+import com.maxeler.maxcompiler.v2.managers.custom.DFELink;
 import com.maxeler.maxcompiler.v2.managers.custom.ManagerClock;
 import com.maxeler.maxcompiler.v2.managers.custom.blocks.KernelBlock;
 import com.maxeler.networking.v1.kernel_types.EthernetRXType;
@@ -12,6 +13,8 @@ import com.maxeler.networking.v1.managers.NetworkManager;
 import com.maxeler.networking.v1.managers.netlib.EthernetChecksumMode;
 import com.maxeler.networking.v1.managers.netlib.EthernetStream;
 import com.maxeler.networking.v1.managers.netlib.Max4NetworkConnection;
+import com.maxeler.networking.v1.managers.netlib.TimestampFormat;
+import com.maxeler.networking.v1.managers.netlib.TimestampSource;
 
 
 public class FilterManager extends NetworkManager {
@@ -35,11 +38,13 @@ public class FilterManager extends NetworkManager {
 		pushDefaultClock(netClk);
 
 
-
+		pushTimestampSource(TimestampSource.HOST_CLOCK);
+		DFELink ts = addTimestampStream("ts", TimestampFormat.COUNT, 9);
 
 		EthernetRXType rxLinkType = new EthernetRXType();
 
 		KernelBlock kernel = addKernel(new FilterKernel(makeKernelParameters("filterKernel"), rxLinkType, links.size()));
+		kernel.getInput(FilterKernel.INPUT_TIMESTAMP) <== ts;
 
 		int i = 0;
 		for (EthernetStream link : links) {

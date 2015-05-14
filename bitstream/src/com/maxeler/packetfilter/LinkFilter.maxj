@@ -1,6 +1,10 @@
 package com.maxeler.packetfilter;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.Reductions;
 import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.IO.NonBlockingInput;
 import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
 import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEStruct;
@@ -9,36 +13,84 @@ import com.maxeler.networking.v1.framed_kernels.FramedLinkType;
 public class LinkFilter extends KernelLib {
 
 	private final DFEVar valid;
+	private final DFEStruct metadata;
+	private final DFEVar metadataValid;
 
-	public LinkFilter(KernelLib owner, NonBlockingInput<DFEStruct> input, FramedLinkType rxLinkType) {
+	public LinkFilter(KernelLib owner, NonBlockingInput<DFEStruct> input, DFEVar timestamp, FramedLinkType rxLinkType, int linkNumber) {
 		super(owner);
 		/*
 		 * Echo back only UDP frames
 		 */
 
 		valid = input.valid;
-		DFEVar wordData = input.data[rxLinkType.getData()];
+		DFEVar data = input.data[rxLinkType.getData()];
 		DFEVar isStart = input.valid & (DFEVar)input.data[rxLinkType.getSOF()];
+		DFEVar isEnd = input.valid & (DFEVar)input.data[rxLinkType.getEOF()];
+		DFEVar mod = (DFEVar)input.data[rxLinkType.getMod()];
 
 //		debug.simPrintf(valid, "Got frame data 0x%x\n", wordData);
 
-		EthernetParser ep = new EthernetParser(this, isStart, valid, wordData);
-		IPv4Parser ip = new IPv4Parser(this, ep.getPayloadStart(), ep.getPayloadValid() & ep.isIpEtherType(), ep.getPayload());
-		UdpParser up = new UdpParser(this, ip.getPayloadStart(), ip.getPayloadValid(), ip.getPayload());
-		TcpParser tp = new TcpParser(this, ip.getPayloadStart(), ip.getPayloadValid(), ip.getPayload());
+		EthernetParser ep = new EthernetParser(this, isStart, valid, data);
 
+		IPv4Parser ip = new IPv4Parser(this, ep.getPayloadStart(), ep.getPayloadValid() & ep.isIpEtherType(), ep.getPayload());
+
+		UdpParser up = new UdpParser(this, ip.getPayloadStart(), ip.getPayloadValid() & ip.isUdp(), ip.getPayload());
+		TcpParser tp = new TcpParser(this, ip.getPayloadStart(), ip.getPayloadValid() & ip.isTcp(), ip.getPayload());
 
 		FixParser fixParser = new FixParser(this, tp.getPayloadStart(), tp.getPayloadValid(), tp.getPayload());
 		Mdp3Parser mdp3Parser = new Mdp3Parser(this, up.getPayloadStart(), up.getPayloadValid(), up.getPayload());
 
 		DFEVar mdp3SeqNum = mdp3Parser.getSeqNum();
-		DFEVar mdp3SeqValid = mdp3Parser.isSeqNumFound() & ep.isIpEtherType() & ip.isUdp();
+		DFEVar mdp3SeqValid = mdp3Parser.isSeqNumFound();
 
 		DFEVar fixSeqNum = fixParser.getSeqNum();
-		DFEVar fixSeqValid = fixParser.isSeqNumFound() & ep.isIpEtherType() & ip.isTcp();
+		DFEVar fixSeqValid = fixParser.isSeqNumFound();
+
+		metadata = Types.packetMetadata.newInstance(this);
+
+		metadata[Types.PacketMetadata.IsMarketData] <== mdp3SeqValid;
+		metadata[Types.PacketMetadata.FlowId] <==
+			Reductions.streamHold(mdp3SeqValid ? up.getSrcPort() # up.getDstPort() :
+												 tp.getSrcPort() # tp.getDstPort(), mdp3SeqValid | fixSeqValid);
+		metadata[Types.PacketMetadata.SequenceNumber] <==
+			Reductions.streamHold(mdp3SeqValid ? mdp3Parser.getSeqNum() : fixParser.getSeqNum(), mdp3SeqValid | fixSeqValid);
+		metadata[Types.PacketMetadata.PortId] <== constant.var(dfeUInt(8), linkNumber);
+		metadata[Types.PacketMetadata.DfeTimestamp] <== Reductions.streamHold(timestamp, isStart);
+		metadata[Types.PacketMetadata.AristaTimestamp] <== Reductions.streamHold(extractAristaTimestamp(mod, data), isEnd);
+		metadataValid = isEnd &
+			Reductions.streamHold(isStart ? constant.var(false) : constant.var(true), isStart | fixSeqValid | mdp3SeqValid);
 
 		debug.simPrintf(fixSeqValid, "Found FIX SeqNum = %x\n", fixSeqNum);
 		debug.simPrintf(mdp3SeqValid, "Found MDP3 SeqNum = %x\n", mdp3SeqNum);
+	}
+
+	private DFEVar extractAristaTimestamp(DFEVar mod, DFEVar data) {
+		List<DFEVar> timestamps = new ArrayList<DFEVar>();
+
+		DFEVar prevData = stream.offset(data, -1);
+
+		for (int i=0; i < 8; i++) {
+			if (i == 1) {
+				timestamps.add(data.slice(0, 8) # prevData.slice(5*8, 3*8));
+			} else if (i == 2) {
+				timestamps.add(data.slice(0, 2*8) # prevData.slice(6*8, 2*8));
+			} else if (i == 3) {
+				timestamps.add(data.slice(0, 3*8) # prevData.slice(7*8, 1*8));
+			} else {
+				timestamps.add(data.slice(0, 4*8));
+			}
+		}
+
+		return control.mux(mod, timestamps).cast(dfeUInt(32));
+	}
+
+
+	public DFEStruct getMetadata() {
+		return metadata;
+	}
+
+	public DFEVar getMetadataValid() {
+		return metadataValid;
 	}
 
 }

@@ -1,4 +1,8 @@
 bitstream/bin
 *.pcap
 *.pyc
-
+debug*/
+.deps
+*.max
+*.o
+filter
