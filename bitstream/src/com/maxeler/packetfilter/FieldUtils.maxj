@@ -1,0 +1,176 @@
+package com.maxeler.packetfilter;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.Reductions;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.WrapMode;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
+import com.maxeler.maxcompiler.v2.utils.MathUtils;
+
+public class FieldUtils extends KernelLib {
+	final int wordSizeBits;
+	final int wordSizeBytes;
+
+	public FieldUtils(KernelLib owner, int wordSizeBits) {
+		super(owner);
+
+		this.wordSizeBits = wordSizeBits;
+		this.wordSizeBytes = wordSizeBits / 8;
+	}
+
+	public static class FieldDesc {
+		private final int offset;
+		private final DFEType type;
+
+		public FieldDesc(DFEType type, int offset) {
+			this.type = type;
+			this.offset = offset;
+		}
+
+		public DFEType getType() { return type; }
+		public int getByteOffset() { return offset; }
+	}
+
+	public DFEVar captureField(DFEVar isStart, DFEVar data, FieldDesc field) {
+		int fieldSizeBytes = field.getType().getTotalBits() / 8;
+		int offsetMod = field.getByteOffset() % wordSizeBytes;
+		int fieldSizeWords = MathUtils.ceilDivide(fieldSizeBytes, wordSizeBytes) + (offsetMod + fieldSizeBytes > wordSizeBytes ? 1 : 0);
+		int startWord = field.getByteOffset() / wordSizeBytes;
+
+
+		DFEVar theWord = stream.offset(data, startWord);
+
+		for (int w=1; w < fieldSizeWords; w++) {
+			theWord = stream.offset(data, startWord + w) # theWord;
+		}
+
+		DFEVar theField = theWord.slice(offsetMod * 8, fieldSizeBytes * 8);
+		theField = Reductions.streamHold(theField, isStart);
+
+		return theField.cast(field.getType());
+	}
+
+	public DFEVar isAtOffset(DFEVar isStart, int byteOffset) {
+		int startWord = byteOffset / wordSizeBytes;
+
+		DFEVar count = control.count.makeCounter(
+				control.count.makeParams(MathUtils.bitsToRepresent(startWord + 1))
+					.withWrapMode(WrapMode.STOP_AT_MAX)
+					.withMax(startWord + 1)
+					.withReset(isStart)).getCount();
+		DFEVar fieldStart = count === startWord;
+
+		return fieldStart;
+	}
+
+	public DFEVar replaceField(DFEVar isStart, DFEVar wordStream, FieldDesc fieldToReplace, DFEVar newFieldData) {
+		int fieldSizeBits = fieldToReplace.getType().getTotalBits();
+		int fieldSizeBytes = fieldSizeBits / 8;
+		int offsetMod = fieldToReplace.getByteOffset() % wordSizeBytes;
+		int fieldSizeWords = MathUtils.ceilDivide(fieldSizeBytes, wordSizeBytes);
+		int neededWords = fieldSizeWords + (offsetMod + fieldSizeBytes > wordSizeBytes ? 1 : 0);
+		int startWord = fieldToReplace.getByteOffset() / wordSizeBytes;
+
+		List<DFEVar> newFieldWords = new ArrayList<DFEVar>();
+
+		int pos = 0;
+		int remBits = fieldSizeBits;
+		boolean firstWord = true;
+		while (remBits > 0) {
+
+			int bitsNow = Math.min(remBits, wordSizeBits - (firstWord ? (offsetMod*8) : 0));
+			DFEVar fieldSlice = newFieldData.slice(pos, bitsNow);
+
+			if (firstWord) {
+				if (offsetMod != 0) {
+					fieldSlice = fieldSlice # wordStream.slice(0, offsetMod * 8);
+				}
+
+				int currentFieldSize = fieldSlice.getType().getTotalBits();
+
+				if (currentFieldSize < wordSizeBits) {
+					fieldSlice = wordStream.slice(currentFieldSize, wordSizeBits - currentFieldSize) # fieldSlice;
+				}
+			} else {
+				if (remBits < wordSizeBits) {
+					fieldSlice = wordStream.slice(remBits, wordSizeBits - remBits) # fieldSlice;
+				}
+			}
+
+
+			newFieldWords.add(fieldSlice);
+			remBits -= bitsNow;
+			pos += bitsNow;
+			firstWord = false;
+		}
+
+
+		DFEVar count = control.count.makeCounter(
+				control.count.makeParams(MathUtils.bitsToRepresent(startWord + neededWords + 1))
+					.withWrapMode(WrapMode.STOP_AT_MAX)
+					.withMax(startWord + neededWords + 1)
+					.withReset(isStart)).getCount();
+		DFEVar fieldStart = count === startWord;
+		DFEVar inField = count < (startWord + neededWords) & count >= startWord;
+//		DFEVar fieldEnd = count === (startWord + neededWords - 1);
+
+		DFEVar newField;
+
+		if (newFieldWords.size() > 1) {
+			DFEVar newFieldWordSelect = control.count.makeCounter(
+					control.count.makeParams(MathUtils.bitsToAddress(newFieldWords.size()))
+							.withWrapMode(WrapMode.STOP_AT_MAX)
+							.withMax(newFieldWords.size())
+							.withReset(fieldStart)
+					).getCount();
+			newField = control.mux(newFieldWordSelect, newFieldWords);
+		} else {
+			newField = newFieldWords.get(0);
+		}
+
+
+		DFEVar replaced = inField ? newField : wordStream;
+
+		return replaced;
+	}
+
+	public DFEVar realign(DFEVar data, int alignment) {
+		int wordSizeBytes = data.getType().getTotalBits()/8;
+		int mod = alignment % wordSizeBytes;
+
+
+		/*
+		 *   | 0 1 2 3 4 5 6 7
+		 * 0 | x x x A B C D E
+		 * 1 | F G H x x x x x
+		 *
+		 * ---->
+		 *   | 3 4 5 6 7 0 1 2
+		 * 0 | A B C D E F G H
+		 *
+		 *
+		 */
+		DFEVar realignedData = data.slice(mod * 8, (wordSizeBytes-mod) * 8);
+		if (mod != 0) realignedData =  stream.offset(data.slice(0, mod*8), 1) #  realignedData;
+
+		return realignedData;
+	}
+
+	public DFEVar byteReverse(DFEVar v) {
+		int size = v.getType().getTotalBits() / 8;
+
+		DFEVar r = null;
+
+		for (int i=0; i < size; i++) {
+			DFEVar b = v.slice(i*8, 8);
+			if (i == 0) r = b;
+			else r = r # b;
+		}
+
+		return r.cast(v.getType());
+	}
+
+}
